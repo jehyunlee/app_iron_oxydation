@@ -1,0 +1,338 @@
+<!DOCTYPE html><html lang="ko"><head><style data-merge-styles="true"></style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>녹슬까, 탈까, 녹을까 — 철 시료 열수지 시뮬레이터</title>
+<meta name="description" content="철 시료를 토치로 가열할 때 녹슬지, 불타지, 녹는지를 열수지로 계산해 보는 시뮬레이터">
+<meta property="og:title" content="녹슬까, 탈까, 녹을까 — 철 시료 열수지 시뮬레이터">
+<meta property="og:description" content="토치 출력, 산소 농도, 받침 열전도, 시료 형태를 바꿔 철의 산화·연소·용융을 실험해 보세요.">
+<meta property="og:image" content="https://app.jehyunlee.dev/iron_oxydation/og-image.jpg">
+<meta property="og:url" content="https://app.jehyunlee.dev/iron_oxydation/">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&amp;family=JetBrains+Mono:wght@600;700&amp;display=swap">
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  color-scheme:light;
+  --paper:#e6ecef; --surface:#f6f8f9; --surface-2:#dde5ea; --ink:#15202a; --muted:#566573; --line:#c6d1d8;
+  --heat:#e8601c; --heat-soft:#fbe3d4; --cool:#2463b0; --oxide:#8b5a3c; --grid:#d7e0e5;
+  --font:"IBM Plex Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --paper:#0d1317; --surface:#141c22; --surface-2:#1b252d; --ink:#e2e9ee; --muted:#8a99a6; --line:#25323c;
+    --heat:#ff7a32; --heat-soft:#3a2216; --cool:#62a2ec; --oxide:#c58c60; --grid:#1f2a33;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --paper:#0d1317; --surface:#141c22; --surface-2:#1b252d; --ink:#e2e9ee; --muted:#8a99a6; --line:#25323c;
+  --heat:#ff7a32; --heat-soft:#3a2216; --cool:#62a2ec; --oxide:#c58c60; --grid:#1f2a33;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--font);line-height:1.55;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+.wrap{max-width:1140px;margin:0 auto;padding:22px 16px 56px}
+header{margin-bottom:18px;max-width:62ch}
+h1{font-size:clamp(25px,5.4vw,36px);line-height:1.15;margin:0 0 8px;font-weight:700;letter-spacing:-.015em}
+.lede{margin:0;color:var(--muted);font-size:15px}
+.layout{display:grid;grid-template-columns:minmax(300px,430px) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:860px){.layout{grid-template-columns:minmax(0,1fr)}}
+
+.stage{position:relative;background:#0a0f14;border-radius:14px;overflow:hidden;border:1px solid #1d2731;display:flex;justify-content:center}
+.stage canvas{display:block}
+.hud{position:absolute;left:12px;top:10px;color:#eef3f6;pointer-events:none;text-shadow:0 1px 2px rgba(0,0,0,.6)}
+.hud .t{font-family:var(--mono);font-size:30px;font-weight:700;line-height:1;letter-spacing:-.02em}
+.hud .t small{font-size:15px;font-weight:600;margin-left:2px;color:#b9c4cc}
+.hud .row{font-size:12px;color:#aab6bf;margin-top:5px}
+.pill{position:absolute;right:10px;top:10px;font-size:12.5px;font-weight:500;padding:4px 11px;border-radius:999px;background:rgba(255,255,255,.08);color:#e9eef2;border:1px solid rgba(255,255,255,.16);transition:background .25s,border-color .25s}
+.pill.hot{background:#e8601c;border-color:#ff9a62;color:#fff}
+.pill.melt{background:#c9a227;border-color:#f2d36b;color:#1a1408}
+.pill.ox{background:#6b4a33;border-color:#a8774f}
+.clock{position:absolute;right:12px;top:40px;font-family:var(--mono);font-size:12px;font-weight:600;color:#8f9ca6;text-align:right;line-height:1.35}
+
+.switchbar{display:flex;gap:8px;margin-top:10px}
+.btn{font:inherit;font-size:14.5px;font-weight:500;border-radius:10px;padding:11px 14px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;min-height:44px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.go{flex:1;background:var(--heat);border-color:transparent;color:#fff;font-weight:700;letter-spacing:.01em}
+.btn.go.on{background:var(--surface-2);color:var(--ink);border-color:var(--line)}
+.btn:focus-visible,.chip:focus-visible,.seg button:focus-visible,input[type=range]:focus-visible,summary:focus-visible{outline:2px solid var(--cool);outline-offset:2px}
+.speedrow{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:13px;color:var(--muted)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--surface)}
+.seg button{font:inherit;font-size:13px;padding:6px 12px;border:0;background:transparent;color:var(--ink);cursor:pointer;min-height:34px}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
+.eff{margin-left:auto;font-size:12.5px}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px}
+.side{display:grid;gap:14px}
+.verdict{border-left:4px solid var(--line);transition:border-color .3s}
+.verdict[data-k="oxide"],.verdict[data-k="forced"]{border-left-color:var(--oxide)}
+.verdict[data-k="burn"],.verdict[data-k="burnmelt"]{border-left-color:var(--heat)}
+.verdict[data-k="melt"]{border-left-color:#c9a227}
+.v-top{display:flex;gap:12px;align-items:center}
+.v-emoji{font-size:30px;line-height:1;width:40px;text-align:center}
+.v-kicker{font-size:12.5px;color:var(--muted)}
+.v-title{font-size:21px;font-weight:700;line-height:1.25}
+.v-desc{margin:10px 0 12px;font-size:14px;color:var(--ink);max-width:64ch}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+@media (max-width:460px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.stats div{background:var(--surface-2);border-radius:8px;padding:8px 10px}
+.stats span{display:block;font-size:11.5px;color:var(--muted)}
+.stats b{font-size:15px;font-weight:700}
+
+.ctl{padding:12px 0;border-top:1px solid var(--line)}
+.ctl:first-of-type{border-top:0;padding-top:4px}
+.ctl-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px;font-size:14px;font-weight:500}
+.ctl-row .hint{font-weight:400;color:var(--muted);font-size:12.5px}
+.val{font-weight:700;font-size:15px;color:var(--ink);white-space:nowrap}
+input[type=range]{width:100%;accent-color:var(--heat);height:28px;margin:0}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:6px 11px;cursor:pointer;min-height:34px;line-height:1.2}
+.chip small{color:var(--muted);margin-left:4px;font-size:11.5px}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.chip[aria-pressed="true"] small{color:inherit;opacity:.75}
+.chip:disabled{opacity:.45;cursor:not-allowed}
+.chips.metals{margin-top:6px}
+.chips.metals .chip{font-size:12px;padding:4px 9px;min-height:30px}
+.presets-label{font-size:13px;color:var(--muted);margin:0 0 8px}
+
+.charts{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+@media (max-width:860px){.charts{grid-template-columns:minmax(0,1fr)}}
+figure{margin:0}
+.chart figcaption{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 12px;align-items:baseline;margin-bottom:8px}
+.chart figcaption b{font-size:15px}
+.legend{font-size:12px;color:var(--muted);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.legend i{display:inline-block;width:16px;height:3px;border-radius:2px;background:var(--c);vertical-align:middle;margin-right:4px}
+.legend i.dash{background:repeating-linear-gradient(90deg,var(--c) 0 4px,transparent 4px 7px)}
+.chart canvas{display:block;width:100%;height:220px}
+.cap{font-size:13px;color:var(--muted);margin:10px 0 0;max-width:70ch}
+.notes{grid-column:1/-1}
+.notes summary{cursor:pointer;font-weight:700;font-size:15px}
+.notes ul{margin:8px 0 0;padding-left:18px;font-size:14px;color:var(--ink);max-width:72ch}
+.notes li{margin:5px 0}
+.math-doc{max-width:72ch}
+.math-doc h3{font-size:16px;margin:26px 0 6px;font-weight:700}
+.math-doc h3:first-child{margin-top:14px}
+.math-doc p{font-size:14.5px;margin:6px 0;line-height:1.7}
+.math-doc .eq{overflow-x:auto;overflow-y:hidden;margin:4px 0;padding:2px 0;-webkit-overflow-scrolling:touch}
+.math-doc mjx-container[display="true"]{margin:.55em 0 !important}
+.math-doc mjx-container{color:var(--ink)}
+@media (max-width:480px){.math-doc .eq{font-size:93%}}
+@media (prefers-reduced-motion: reduce){.pill,.verdict{transition:none}}
+</style>
+<script>
+window.MathJax = { tex: { inlineMath: [['\\(', '\\)']], displayMath: [['\\[', '\\]']] }, svg: { fontCache: 'global' }, options: { enableMenu: false } };
+</script>
+<script src="js/vendor/mathjax/tex-svg.js" defer></script>
+<style type="text/css">.CtxtMenu_InfoClose {  top:.2em; right:.2em;}
+.CtxtMenu_InfoContent {  overflow:auto; text-align:left; font-size:80%;  padding:.4em .6em; border:1px inset; margin:1em 0px;  max-height:20em; max-width:30em; background-color:#EEEEEE;  white-space:normal;}
+.CtxtMenu_Info.CtxtMenu_MousePost {outline:none;}
+.CtxtMenu_Info {  position:fixed; left:50%; width:auto; text-align:center;  border:3px outset; padding:1em 2em; background-color:#DDDDDD;  color:black;  cursor:default; font-family:message-box; font-size:120%;  font-style:normal; text-indent:0; text-transform:none;  line-height:normal; letter-spacing:normal; word-spacing:normal;  word-wrap:normal; white-space:nowrap; float:none; z-index:201;  border-radius: 15px;                     /* Opera 10.5 and IE9 */  -webkit-border-radius:15px;               /* Safari and Chrome */  -moz-border-radius:15px;                  /* Firefox */  -khtml-border-radius:15px;                /* Konqueror */  box-shadow:0px 10px 20px #808080;         /* Opera 10.5 and IE9 */  -webkit-box-shadow:0px 10px 20px #808080; /* Safari 3 & Chrome */  -moz-box-shadow:0px 10px 20px #808080;    /* Forefox 3.5 */  -khtml-box-shadow:0px 10px 20px #808080;  /* Konqueror */  filter:progid:DXImageTransform.Microsoft.dropshadow(OffX=2, OffY=2, Color="gray", Positive="true"); /* IE */}
+</style><style type="text/css">.CtxtMenu_MenuClose {  position:absolute;  cursor:pointer;  display:inline-block;  border:2px solid #AAA;  border-radius:18px;  -webkit-border-radius: 18px;             /* Safari and Chrome */  -moz-border-radius: 18px;                /* Firefox */  -khtml-border-radius: 18px;              /* Konqueror */  font-family: "Courier New", Courier;  font-size:24px;  color:#F0F0F0}
+.CtxtMenu_MenuClose span {  display:block; background-color:#AAA; border:1.5px solid;  border-radius:18px;  -webkit-border-radius: 18px;             /* Safari and Chrome */  -moz-border-radius: 18px;                /* Firefox */  -khtml-border-radius: 18px;              /* Konqueror */  line-height:0;  padding:8px 0 6px     /* may need to be browser-specific */}
+.CtxtMenu_MenuClose:hover {  color:white!important;  border:2px solid #CCC!important}
+.CtxtMenu_MenuClose:hover span {  background-color:#CCC!important}
+.CtxtMenu_MenuClose:hover:focus {  outline:none}
+</style><style type="text/css">.CtxtMenu_Menu {  position:absolute;  background-color:white;  color:black;  width:auto; padding:5px 0px;  border:1px solid #CCCCCC; margin:0; cursor:default;  font: menu; text-align:left; text-indent:0; text-transform:none;  line-height:normal; letter-spacing:normal; word-spacing:normal;  word-wrap:normal; white-space:nowrap; float:none; z-index:201;  border-radius: 5px;                     /* Opera 10.5 and IE9 */  -webkit-border-radius: 5px;             /* Safari and Chrome */  -moz-border-radius: 5px;                /* Firefox */  -khtml-border-radius: 5px;              /* Konqueror */  box-shadow:0px 10px 20px #808080;         /* Opera 10.5 and IE9 */  -webkit-box-shadow:0px 10px 20px #808080; /* Safari 3 & Chrome */  -moz-box-shadow:0px 10px 20px #808080;    /* Forefox 3.5 */  -khtml-box-shadow:0px 10px 20px #808080;  /* Konqueror */}
+.CtxtMenu_MenuItem {  padding: 1px 2em;  background:transparent;}
+.CtxtMenu_MenuArrow {  position:absolute; right:.5em; padding-top:.25em; color:#666666;  font-family: null; font-size: .75em}
+.CtxtMenu_MenuActive .CtxtMenu_MenuArrow {color:white}
+.CtxtMenu_MenuArrow.CtxtMenu_RTL {left:.5em; right:auto}
+.CtxtMenu_MenuCheck {  position:absolute; left:.7em;  font-family: null}
+.CtxtMenu_MenuCheck.CtxtMenu_RTL { right:.7em; left:auto }
+.CtxtMenu_MenuRadioCheck {  position:absolute; left: .7em;}
+.CtxtMenu_MenuRadioCheck.CtxtMenu_RTL {  right: .7em; left:auto}
+.CtxtMenu_MenuInputBox {  padding-left: 1em; right:.5em; color:#666666;  font-family: null;}
+.CtxtMenu_MenuInputBox.CtxtMenu_RTL {  left: .1em;}
+.CtxtMenu_MenuComboBox {  left:.1em; padding-bottom:.5em;}
+.CtxtMenu_MenuSlider {  left: .1em;}
+.CtxtMenu_SliderValue {  position:absolute; right:.1em; padding-top:.25em; color:#333333;  font-size: .75em}
+.CtxtMenu_SliderBar {  outline: none; background: #d3d3d3}
+.CtxtMenu_MenuLabel {  padding: 1px 2em 3px 1.33em;  font-style:italic}
+.CtxtMenu_MenuRule {  border-top: 1px solid #DDDDDD;  margin: 4px 3px;}
+.CtxtMenu_MenuDisabled {  color:GrayText}
+.CtxtMenu_MenuActive {  background-color: #606872;  color: white;}
+.CtxtMenu_MenuDisabled:focus {  background-color: #E8E8E8}
+.CtxtMenu_MenuLabel:focus {  background-color: #E8E8E8}
+.CtxtMenu_ContextMenu:focus {  outline:none}
+.CtxtMenu_ContextMenu .CtxtMenu_MenuItem:focus {  outline:none}
+.CtxtMenu_SelectionMenu {  position:relative; float:left;  border-bottom: none; -webkit-box-shadow:none; -webkit-border-radius:0px; }
+.CtxtMenu_SelectionItem {  padding-right: 1em;}
+.CtxtMenu_Selection {  right: 40%; width:50%; }
+.CtxtMenu_SelectionBox {  padding: 0em; max-height:20em; max-width: none;  background-color:#FFFFFF;}
+.CtxtMenu_SelectionDivider {  clear: both; border-top: 2px solid #000000;}
+.CtxtMenu_Menu .CtxtMenu_MenuClose {  top:-10px; left:-10px}
+</style></head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>녹슬까, 탈까, 녹을까</h1>
+    <p class="lede">순철 시료에 토치를 대고, 산화 반응열과 받침·복사로 빠져나가는 열의 경쟁을 실시간으로 계산합니다. 발열이 방열을 넘어서는 순간이 점화입니다.</p>
+  </header>
+
+  <main class="layout">
+    <section>
+      <div class="stage" id="stageBox">
+        <canvas id="stage" aria-label="시험관 장치 애니메이션"></canvas>
+        <div class="hud"><div class="t" id="hT">25<small>°C</small></div><div class="row" id="hX">산화막 6 nm</div><div class="row" id="hQ">반응열 &lt;1 W, 방열 &lt;1 W</div></div>
+        <div class="pill " id="pill">대기</div>
+        <div class="clock" id="clock">0:00<br></div>
+      </div>
+      <div class="switchbar">
+        <button class="btn go" id="btnRun">스위치 켜기</button>
+        <button class="btn" id="btnTorch" disabled="">토치 끄기</button>
+        <button class="btn" id="btnReset">리셋</button>
+      </div>
+      <div class="speedrow">
+        <span>배속</span>
+        <div class="seg" id="speeds" role="group" aria-label="배속">
+          <button data-s="1" aria-pressed="false">1×</button>
+          <button data-s="10" aria-pressed="true">10×</button>
+          <button data-s="60" aria-pressed="false">60×</button>
+        </div>
+        <span class="eff" id="eff"></span>
+      </div>
+    </section>
+
+    <section class="side">
+      <div class="panel verdict" id="verdict" data-k="idle">
+        <div class="v-top">
+          <div class="v-emoji" id="vE">⏻</div>
+          <div><div class="v-kicker" id="vK">판정</div><div class="v-title" id="vT">대기 중</div></div>
+        </div>
+        <p class="v-desc" id="vD">조건을 고른 뒤 스위치를 켜세요. 아래 열수지 도표의 ●이 지금 조건에서 온도가 멈출 지점입니다.</p>
+        <div class="stats">
+          <div><span>최고 온도</span><b id="sTmax">—</b></div>
+          <div><span>점화</span><b id="sIgn">—</b></div>
+          <div><span>산화율</span><b id="sX">—</b></div>
+          <div><span>용융</span><b id="sMelt">—</b></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <p class="presets-label">실험 프리셋</p>
+        <div class="chips" id="presets"></div>
+        <div style="height:10px"></div>
+        <div class="ctl">
+          <div class="ctl-row"><label for="rP">토치 열량 <span class="hint">시료가 흡수하는 양</span></label><output id="oP" class="val">500 W</output></div>
+          <input type="range" id="rP" min="0" max="1000" step="1" style="">
+        </div>
+        <div class="ctl">
+          <div class="ctl-row"><label for="rO">관 내부 산소 농도</label><output id="oO" class="val">21 % (공기)</output></div>
+          <input type="range" id="rO" min="0" max="100" step="1" style="">
+        </div>
+        <div class="ctl">
+          <div class="ctl-row"><label for="rK">받침 금속 열전도도</label><output id="oK" class="val">16.0 W/m·K</output></div>
+          <input type="range" id="rK" min="0" max="1000" step="1" style="">
+          <div class="chips metals" id="metals"></div>
+        </div>
+        <div class="ctl">
+          <div class="ctl-row"><span>철 시료 형태</span><span class="hint" id="lockHint"></span></div>
+          <div class="chips" id="forms"></div>
+        </div>
+        <div class="ctl">
+          <div class="ctl-row"><label for="rM">시료 질량</label><output id="oM" class="val">100 g</output></div>
+          <input type="range" id="rM" min="10" max="200" step="10" style="">
+        </div>
+      </div>
+    </section>
+
+    <section class="charts">
+      <figure class="panel chart">
+        <figcaption><b>온도와 산화율</b><span class="legend"><span><i style="--c:var(--heat)"></i>온도 °C (왼쪽)</span><span><i class="dash" style="--c:var(--oxide)"></i>산화율 (오른쪽)</span></span></figcaption>
+        <canvas id="cT"></canvas>
+      </figure>
+      <figure class="panel chart">
+        <figcaption><b>열수지 도표</b><span class="legend"><span><i style="--c:var(--heat)"></i>발열</span><span><i style="--c:var(--cool)"></i>방열</span><span><i class="dash" style="--c:var(--heat)"></i>토치만</span></span></figcaption>
+        <canvas id="cS"></canvas>
+        <p class="cap">발열(토치 + 반응열)이 방열보다 위에 있으면 온도가 오르고, 아래면 내려갑니다. 두 곡선이 만나는 ●에서 온도가 멈춥니다. 토치를 올려 아래쪽 ●이 사라지면 그 너머엔 멈출 곳이 없어 열폭주가 일어납니다. 점화 후 토치를 꺼 보면, 반응열만으로도 계속 타는지 확인할 수 있습니다. 조건을 식으로 쓰면 아래 "점화 조건"에 있습니다.</p>
+      </figure>
+    </section>
+
+    <details class="panel notes" open="">
+      <summary>계산 방법과 수식</summary>
+      <div class="math-doc">
+        <h3>에너지 수지: 온도를 정하는 식</h3>
+        <p>시료 전체를 온도 하나로 보고(집중 열용량 모델), 들어오는 열과 나가는 열의 차이만큼 온도가 변한다고 둡니다. 시뮬레이터가 매 순간 푸는 식은 이것 하나입니다.</p>
+        <div class="eq">\[ C(T)\,\frac{dT}{dt} = \dot Q_{\text{gen}}(T) - \dot Q_{\text{loss}}(T) \]</div>
+        <div class="eq">\[ \dot Q_{\text{gen}} = P_{\text{torch}}(T) + \eta\, q\, \dot m \]</div>
+        <div class="eq">\[ C(T) = m_{\mathrm{Fe}}\,c_{p,\mathrm{Fe}}(T) + m_{\mathrm{ox}}\,c_{p,\mathrm{ox}} \]</div>
+        <p>\(\dot m\)은 산화되는 철의 질량 속도(kg/s), \(\eta = 0.6\)은 반응열 중 시료에 남는 비율입니다(나머지는 배기가스와 불티로 나감). 녹는점 \(T_m = 1538\ ^\circ\mathrm{C}\)에 닿으면 온도 대신 액상 분율 \(f_L\)이 올라갑니다(융해열 \(\Delta h_f = 247\ \mathrm{kJ/kg}\)).</p>
+        <div class="eq">\[ m_{\mathrm{Fe}}\,\Delta h_f\,\frac{df_L}{dt} = \dot Q_{\text{gen}} - \dot Q_{\text{loss}} \]</div>
+
+        <h3>토치</h3>
+        <p>슬라이더 값 \(P_0\)은 상온 시료가 받는 열량입니다. 시료가 불꽃 온도에 가까워질수록 온도 차가 줄어 전달량도 줄어듭니다(불꽃 온도 \(T_{\text{flame}} \approx 3500\ ^\circ\mathrm{C}\)).</p>
+        <div class="eq">\[ P_{\text{torch}}(T) = P_0\,\frac{T_{\text{flame}} - T}{T_{\text{flame}} - T_0} \]</div>
+
+        <h3>반응열</h3>
+        <p>건조한 산소 속에서 철은 주로 자철석이 됩니다. 반응 1 mol당 \(\Delta H \approx -1118\ \mathrm{kJ}\)이고, 철 1 kg당으로 바꾸면 다음과 같습니다.</p>
+        <div class="eq">\[ 3\,\mathrm{Fe} + 2\,\mathrm{O_2} \rightarrow \mathrm{Fe_3O_4} \]</div>
+        <div class="eq">\[ q = \frac{1118\ \mathrm{kJ}}{3 \times 55.85\ \mathrm{g}} \approx 6.7\ \mathrm{MJ/kg} \]</div>
+        <p>100 g이 전부 타면 670 kJ입니다. 시료 열용량이 약 50 J/K이니, 열이 하나도 안 빠져나간다면 만 °C 넘게 오를 만한 양입니다. 그래서 승부는 반응열의 총량이 아니라 <b>속도</b>, 즉 \(\dot m\)이 방열보다 빨리 커지느냐에서 갈립니다.</p>
+
+        <h3>산화 속도</h3>
+        <p>\(s\)를 산화로 소모된 금속 두께라 하면, 산화막 두께는 \(d_{\text{ox}} \approx 2.1\,s\)입니다(필링–베드워스 비). 성장 속도는 두 항의 합입니다.</p>
+        <div class="eq">\[ \begin{aligned} \dot s &amp;= A_1\, e^{-E_1/RT}\, e^{-s/s_0}\, f \\ &amp;\quad + \frac{k_p(T)}{s\,\phi(T) + s_{\min}} \end{aligned} \]</div>
+        <p>첫 항은 상온~수백 °C의 얇은 막 성장으로, 막이 \(s_0 = 1\ \mathrm{nm}\)만큼 두꺼워질 때마다 \(e\)배씩 느려집니다(\(E_1 = 40\ \mathrm{kJ/mol}\)). 둘째 항은 이온이 산화막을 뚫고 확산하는 속도가 결정하는 포물선 법칙입니다. 보호막이 온전하면(\(\phi = 1\)) 적분해서</p>
+        <div class="eq">\[ s^2 \approx 2\,k_p\,t \]</div>
+        <p>즉 막이 두꺼울수록 느려지는 자기 보호가 생깁니다. 이것이 "녹"에서 멈추는 이유입니다. 속도 상수는 아레니우스 식을 따르고(\(E_a = 170\ \mathrm{kJ/mol}\)), 산소 농도의 영향은 \(f\)로 넣었습니다.</p>
+        <div class="eq">\[ k_p(T) = k_{p0}\, e^{-E_a/RT}\, w(T)\, f \]</div>
+        <div class="eq">\[ f = \sqrt{x_{\mathrm{O_2}}/0.21} \]</div>
+        <p>두 개의 스위치 함수가 철 산화의 특이점을 담습니다. \(w\)는 570 °C 위에서 결함이 많은 FeO(뷔스타이트)가 생기면서 \(k_p\)가 약 50배로 뛰는 것을, \(\phi\)는 1377 °C에서 FeO가 녹아 보호막이 사라지는 것을 나타냅니다.</p>
+        <div class="eq">\[ w(T) = 0.02 + \frac{0.98}{1 + e^{-(T - 843\,\mathrm{K})/12\,\mathrm{K}}} \]</div>
+        <div class="eq">\[ \phi(T) = \frac{1}{1 + e^{(T - 1650\,\mathrm{K})/25\,\mathrm{K}}} \]</div>
+
+        <h3>표면적과 전환율</h3>
+        <p>입자 반지름이 \(r\)인 분말 \(m\)의 총 표면적과, 바깥부터 깎여 들어가는 수축핵 모델의 전환율은 다음과 같습니다.</p>
+        <div class="eq">\[ A = \frac{3m}{\rho\, r}, \qquad X = 1 - \left(1 - \frac{s}{r}\right)^{3} \]</div>
+        <div class="eq">\[ \dot m_{\text{kin}} = \rho\, A \left(1 - \frac{s}{r}\right)^{2} \dot s \]</div>
+        <p>100 g 기준 \(A\)는 나노분말(\(r = 50\ \mathrm{nm}\)) 약 760 m², 50 μm 분말 약 1.5 m², 덩어리(구, \(r \approx 1.45\ \mathrm{cm}\)) 약 26 cm²입니다. 같은 온도·같은 \(\dot s\)라도 발열이 표면적에 비례하므로, 입자가 작을수록 더 낮은 온도에서 발열이 방열을 넘습니다.</p>
+
+        <h3>산소 공급 한계</h3>
+        <p>보호막이 사라지면 \(\dot m_{\text{kin}}\)이 폭증하고, 대신 산소가 표면까지 오는 속도가 상한이 됩니다. 두 속도는 직렬 저항처럼 합칩니다.</p>
+        <div class="eq">\[ \begin{aligned} \dot m_{\text{sup}} &amp;= K \ln\!\frac{1}{1 - x_{\mathrm{O_2}}} \\ &amp;\quad \times \min(A,\ A_{\max}) \left(1 - \frac{s}{r}\right)^{2} \end{aligned} \]</div>
+        <div class="eq">\[ \dot m = \left(\frac{1}{\dot m_{\text{kin}}} + \frac{1}{\dot m_{\text{sup}}}\right)^{-1} \]</div>
+        <p>로그 항은 스테판 흐름입니다. 공기에선 \(\ln(1/0.79) \approx 0.24\)로 농도에 거의 비례하지만, 순산소에선 질소를 뚫고 확산할 필요가 없어 크게 늘어납니다(계산에선 \(x_{\mathrm{O_2}} \le 0.99\)로 제한해 약 4.6). 덩어리가 공기 중에선 못 타고 순산소에선 타는 이유입니다. \(K = 0.08\ \mathrm{kg/(m^2\,s)}\), \(A_{\max} = 0.04\ \mathrm{m^2}\)입니다.</p>
+
+        <h3>방열</h3>
+        <div class="eq">\[ \dot Q_{\text{loss}} = \dot Q_{\text{cond}} + \dot Q_{\text{rad}} + \dot Q_{\text{conv}} \]</div>
+        <div class="eq">\[ \dot Q_{\text{cond}} = \frac{T - T_0}{\ell/(k A_b) + R_c} \]</div>
+        <div class="eq">\[ \dot Q_{\text{rad}} = \varepsilon\,\sigma A_s \left(T^4 - T_0^4\right) \]</div>
+        <div class="eq">\[ \dot Q_{\text{conv}} = h A_s (T - T_0) \]</div>
+        <p>받침 두께 \(\ell = 3\ \mathrm{cm}\), 단면적 \(A_b = \pi (2.5\ \mathrm{cm})^2\), 접촉저항 \(R_c = 0.08\ \mathrm{K/W}\), \(\varepsilon = 0.8\), \(h = 15\ \mathrm{W/(m^2 K)}\), \(T_0 = 25\ ^\circ\mathrm{C}\)입니다. 받침의 열전도도 \(k\)는 첫 항에만 들어갑니다. 스테인리스는 1 K당 약 1 W, 구리는 약 8.5 W를 빼냅니다. 구리가 25배 좋은 금속인데 효과는 9배쯤인 것은 접촉저항이 직렬로 막고 있기 때문입니다. 복사는 \(T^4\)로 커지므로 1000 °C가 넘으면 전도보다 중요해집니다.</p>
+
+        <h3>점화 조건 (세묘노프)</h3>
+        <p>온도가 멈추는 곳은 \(\dot Q_{\text{gen}}(T) = \dot Q_{\text{loss}}(T)\)인 점이고, 그 점이 안정하려면 온도가 조금 올랐을 때 방열이 더 빨리 늘어야 합니다.</p>
+        <div class="eq">\[ \frac{d\dot Q_{\text{gen}}}{dT} \lt \frac{d\dot Q_{\text{loss}}}{dT} \quad \bullet\ \text{stable} \]</div>
+        <p>부등호가 반대면 불안정한 점(○)이라, 조금만 넘어서도 온도가 그쪽으로 달아납니다.</p>
+        <p>토치를 올리면 아래쪽 ●과 ○이 서로 다가가다가, 두 곡선이 접하는 순간 함께 사라집니다. 이 접점이 점화 경계입니다.</p>
+        <div class="eq">\[ \dot Q_{\text{gen}} = \dot Q_{\text{loss}} \quad \text{and} \quad \frac{d\dot Q_{\text{gen}}}{dT} = \frac{d\dot Q_{\text{loss}}}{dT} \]</div>
+        <p>발열이 \(e^{-E/RT}\), 방열이 \((T - T_a)\)에 비례하는 고전 모델에서는 이 두 조건으로부터 점화 직전 온도 상승이 아주 작다는 결과가 나옵니다.</p>
+        <div class="eq">\[ \Delta T_{\text{cr}} \approx \frac{R\,T_a^{2}}{E} \]</div>
+        <p>예를 들어 \(E = 170\ \mathrm{kJ/mol}\), \(T_a = 800\ \mathrm{K}\)이면 약 31 K입니다. "서서히 따뜻해지다가 갑자기 폭주"하는 모양이 지수 함수에서 나온다는 뜻입니다. 시뮬레이터는 아래 조건이 1초 넘게 이어지면 "연소"로 판정합니다. 반응열 혼자 모든 방열을 이기는 상태라 토치를 꺼도 계속 탑니다.</p>
+        <div class="eq">\[ \eta\, q\, \dot m \gt \dot Q_{\text{loss}}(T), \qquad \frac{dT}{dt} \gt 2\ \mathrm{K/s} \]</div>
+        <p>(반응열이 150 W 미만인 아주 작은 경우는 제외합니다.)</p>
+        <p>열수지 도표의 발열 곡선은 각 온도에 \(\tau = 30\ \mathrm{s}\)쯤 머물렀을 때 자랄 산화막 \(s_\tau \approx \max\!\left(s,\ \sqrt{2 k_p \tau}\right)\)를 넣어 그린 근사입니다. 산화막이 자라면 반응이 느려지므로, 실행 중에는 곡선이 조금씩 내려갑니다.</p>
+
+        <h3>그 밖의 가정</h3>
+        <ul>
+          <li>실제 분말층은 열이 잘 안 통해 표면이 먼저 달아오르므로, 현실의 점화는 이 계산보다 조금 더 쉽습니다.</li>
+          <li>금속 표면에는 처음부터 약 3 nm의 자연 산화막이 있다고 두었습니다.</li>
+          <li>산화물 해리와 증발을 단순화해 온도 상한을 2400 °C로 두었습니다.</li>
+          <li>관 안은 건조하다고 가정해서, 물이 있어야 생기는 붉은 수화 녹 대신 두께에 따라 색이 바뀌는 산화피막(밀짚색, 갈색, 보라, 파랑, 회흑색)으로 표시합니다.</li>
+          <li>수치는 현상을 이해하기 위한 근사치입니다. 실제 장치 설계나 안전 판단에는 쓰지 마세요.</li>
+        </ul>
+      </div>
+    </details>
+  </main>
+</div>
+
+<script src="js/app.js"></script>
+
+
+</body></html>
